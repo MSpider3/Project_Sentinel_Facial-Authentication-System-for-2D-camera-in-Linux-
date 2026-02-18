@@ -267,7 +267,7 @@ The enrollment script will open your camera, guide you through multiple face pos
 ---
 
 ## 🛠️ Installation
-
+We provide a unified setup script to handle dependencies, **model downloading**, compilation, and installation.
 ### Prerequisites
 
 - **OS:** Fedora 40+ (Recommended) — designed for Wayland/GNOME
@@ -296,10 +296,13 @@ The setup script (`setup.sh`) provides two installation modes:
 | **[1] Full System Install** | Installs to `/usr/lib/project-sentinel/`, enables `systemd` service, config at `/etc/project-sentinel/config.ini` |
 | **[2] Dev Install** | Sets up local `venv`, compiles locally in `./builddir/` for testing |
 
+> **Note:** The setup script will automatically download the required AI models (~40MB total) if they are missing.
+
 ### What the Setup Script Does
 
 1. **Installs system dependencies** via `dnf` (vala, gtk4-devel, json-glib-devel, gstreamer1-devel, etc.)
-2. **Compiles the Vala GTK4 app** using Meson + Ninja
+2. **Downloads AI Models** (checks `models/` directory, fetches if missing)
+3. **Compiles the Vala GTK4 app** using Meson + Ninja
 3. **Sets up Python virtual environment** and installs pip dependencies
 4. **Copies files** to system directories (Full Install mode)
 5. **Enables the systemd daemon** (`sentinel-backend.service`)
@@ -477,6 +480,7 @@ Face_Regcognition_Project/
 │   └── ...                    #    (copies of core engine modules)
 │
 ├── models/                    # 🤖 AI Models & Embeddings
+│   ├── download_models.sh     #    ⬇️ Script to download all AI models
 │   ├── face_detection_yunet_2023mar.onnx
 │   ├── face_recognition_sface_2021dec.onnx
 │   ├── MiniFASNetV2.onnx

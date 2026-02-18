@@ -24,12 +24,28 @@ echo "[1] Checking System Dependencies..."
 if command -v dnf &> /dev/null; then
     dnf install -y git gcc meson ninja-build vala gtk4-devel \
                    json-glib-devel gstreamer1-devel gstreamer1-plugins-base-devel \
-                   python3-devel pam-devel polkit
+                   python3-devel pam-devel polkit wget
 else
     echo "Warning: 'dnf' not found. Please ensure you have the required dependencies manually:"
     echo "vala, gtk4-devel, json-glib-devel, gstreamer1-devel, python3-devel, pam-devel"
 fi
 echo "Dependencies checked."
+echo ""
+
+# 1.5. Model Download
+echo "[1.5] Checking AI Models..."
+if [ -f "models/download_models.sh" ]; then
+    chmod +x models/download_models.sh
+    ./models/download_models.sh
+else
+    echo "⚠️ Warning: 'models/download_models.sh' not found. You may need to download models manually."
+    echo "2.7_80x80_MiniFASNetV2.pth  (https://github.com/minivision-ai/Silent-Face-Anti-Spoofing/blob/master/resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth)"
+    echo "4_0_0_80x80_MiniFASNetV1SE.pth (https://github.com/minivision-ai/Silent-Face-Anti-Spoofing/blob/master/resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth)"
+    echo "face_detection_yunet_2023mar.onnx (https://github.com/opencv/opencv_zoo/blob/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx)"
+    echo "face_recognition_sface_2021dec.onnx (https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx)"
+    echo "MiniFASNetV1SE.onnx (https://github.com/yakhyo/face-anti-spoofing/releases/download/weights/MiniFASNetV1SE.onnx)"
+    echo "MiniFASNetV2.onnx (https://github.com/yakhyo/face-anti-spoofing/releases/download/weights/MiniFASNetV2.onnx)"
+fi
 echo ""
 
 # 2. Installation Mode
