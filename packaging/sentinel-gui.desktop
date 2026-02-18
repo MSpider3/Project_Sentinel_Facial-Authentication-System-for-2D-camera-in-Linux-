@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Sentinel Admin
+GenericName=Biometric Security Manager
+Comment=Manage facial recognition authentication (Requires root)
+Exec=sentinel-gui
+Icon=sentinel
+Terminal=false
+Type=Application
+Categories=System;Security;Settings;
+Keywords=biometric;face;recognition;security;authentication;admin;
+StartupNotify=true

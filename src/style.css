@@ -1,0 +1,60 @@
+/* style.css - Modern UI Theme for Sentinel */
+
+/* Glass Panel (Translucent Overlay) */
+.glass-panel {
+    background-color: alpha(black, 0.65);
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid alpha(white, 0.2);
+}
+
+/* HUD Title (Large text overhead) */
+.hud-title {
+    font-size: 24px;
+    font-weight: 800;
+    color: white;
+    text-shadow: 0px 2px 4px rgba(0,0,0,0.8);
+}
+
+/* HUD Subtitle (Smaller text below title) */
+.hud-subtitle {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e0e0e0;
+    text-shadow: 0px 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Instruction Text (Enrollment) */
+.hud-instruction {
+    font-size: 32px;
+    font-weight: bold;
+    color: #00FF00; /* Green */
+    text-shadow: 0px 2px 8px rgba(0,0,0,1.0);
+}
+
+/* Pill Buttons */
+.pill-button {
+    border-radius: 9999px;
+    padding-left: 24px;
+    padding-right: 24px;
+    font-weight: bold;
+}
+
+.pill-button-destructive {
+    border-radius: 9999px;
+    padding-left: 24px;
+    padding-right: 24px;
+    background-color: #e01b24;
+    color: white;
+    font-weight: bold;
+}
+
+/* Typography Overrides */
+.title-1 {
+    font-size: 24pt;
+    font-weight: 800;
+}
+
+.dim-label {
+    opacity: 0.7;
+}

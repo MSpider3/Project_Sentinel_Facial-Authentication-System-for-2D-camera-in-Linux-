@@ -1,0 +1,5 @@
+#!/bin/bash
+# Launcher wrapper for Sentinel GUI (RPM package)
+# Invokes the real binary via pkexec for root privileges
+
+exec pkexec /usr/bin/sentinel-gui-real "$@"

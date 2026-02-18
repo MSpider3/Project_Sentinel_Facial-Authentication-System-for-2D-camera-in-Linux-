@@ -1,0 +1,57 @@
+# ===========================
+# Project Sentinel .gitignore
+# ===========================
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# ---------- IDE / Editor ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.gemini/
+
+# ---------- Chat Logs ----------
+Gemini-talks/
+
+# ---------- Build Artifacts ----------
+builddir/
+build/
+*.o
+
+# ---------- Logs ----------
+logs/
+
+# ---------- User-Specific Data ----------
+# Enrolled face embeddings 
+*.npy
+
+# Blacklist / intrusion screenshots 
+models/blacklist/
+prototype_for_testing/models/blacklist/
+
+# Spoof detector calibration (machine-specific)
+models/minifas_calib.json
+prototype_for_testing/models/minifas_calib.json
+
+# ---------- AI Models (large binary files) ----------
+# These are too large for Git; users should download them separately.
+*.onnx
+*.pth
+
+# ---------- Archive / Old Files ----------
+archive/
+
+# ---------- OS Files ----------
+.DS_Store
+Thumbs.db
