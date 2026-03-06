@@ -80,8 +80,10 @@ namespace Sentinel {
 
         public async Json.Node? call_method (string method, Json.Object ? params = null) {
             if (connection == null || stdin_stream == null || stdout_stream == null) {
-                error_occurred ("Backend not started");
-                return null;
+                // Try to reconnect transparently
+                if (!yield start ()) {
+                    return null;
+                }
             }
 
             // Serialize all IO on this connection to avoid:
@@ -130,10 +132,23 @@ namespace Sentinel {
                         return null;
                     }
 
-                    string? response_line = yield stdout_stream.read_line_async (Priority.DEFAULT, null);
+                    string? response_line = null;
+                    try {
+                        response_line = yield stdout_stream.read_line_async (Priority.DEFAULT, null);
+                    } catch (Error e) {
+                        connection = null;
+                        stdin_stream = null;
+                        stdout_stream = null;
+                        error_occurred ("IO Error reading from backend: %s".printf (e.message));
+                        return null;
+                    }
 
                     if (response_line == null) {
-                        error_occurred ("No response from backend (Stream ended)");
+                        // Connection dropped or daemon crashed
+                        connection = null;
+                        stdin_stream = null;
+                        stdout_stream = null;
+                        error_occurred ("No response from backend (Connection dropped)");
                         return null;
                     }
 

@@ -10,7 +10,7 @@ import json
 import os
 import signal
 
-SOCKET_PATH = "/run/sentinel/sentinel.sock"
+SOCKET_PATH = os.environ.get('SENTINEL_SOCKET_PATH', "/run/sentinel/sentinel.sock")
 
 def main():
     # PAM passes the username in PAM_USER var (sometimes) or we get it from env

@@ -22,7 +22,7 @@ ProtectHome=true
 # Allow access to /run/sentinel and /var/lib/project-sentinel (if needed)
 
 WorkingDirectory=/usr/lib/project-sentinel
-ExecStart=/usr/lib/project-sentinel/venv/bin/python3 sentinel_service.py
+ExecStart=/usr/lib/project-sentinel/venv/bin/sentinel-daemon
 
 # Restart logic
 Restart=always

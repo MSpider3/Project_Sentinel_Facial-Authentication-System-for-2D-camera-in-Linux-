@@ -87,6 +87,21 @@ namespace Sentinel {
                 // Backend ready
                 auth_view.on_backend_ready ();
                 auth_view.refresh_users.begin ();
+
+                // First-run wizard: If no users enrolled, switch to enroll tab
+                var users_res = yield backend.call_method ("get_enrolled_users");
+
+                if (users_res != null) {
+                    var u_obj = users_res.get_object ();
+                    if (u_obj != null && u_obj.has_member ("success") && u_obj.get_boolean_member ("success")) {
+                        var users_arr = u_obj.get_array_member ("users");
+                        if (users_arr.get_length () == 0) {
+                            stack.set_visible_child_name ("enroll");
+                            var tut = new Gtk.AlertDialog ("Welcome to Project Sentinel!\nNo users are enrolled yet. Please enroll your face to get started.");
+                            tut.show (this);
+                        }
+                    }
+                }
             }
         }
 

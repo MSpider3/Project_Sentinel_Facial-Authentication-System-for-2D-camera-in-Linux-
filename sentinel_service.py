@@ -13,7 +13,27 @@ import logging
 import threading
 import time
 import base64
+import pwd
+import pam
 from threading import Thread, Lock, Event
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_record = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "module": record.module,
+        }
+        if record.exc_info:
+            log_record["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
+
+logging.basicConfig(level=logging.INFO)
+root_logger = logging.getLogger()
+for h in root_logger.handlers:
+    h.setFormatter(JsonFormatter())
+logger = logging.getLogger(__name__)
 
 # Ensure consistent working directory (limitations of systemd)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -412,15 +432,15 @@ class SentinelService:
             x, y, w, h = face_box
             face_roi = frame[y:y+h, x:x+w]
             
-            recognizer_input_shape = self.processor.recognizer.get_inputs()[0].shape[2:]
-            recognizer_input_name = self.processor.recognizer.get_inputs()[0].name
+            recognizer_input_shape = self.processor.face_recognizer.get_inputs()[0].shape[2:]
+            recognizer_input_name = self.processor.face_recognizer.get_inputs()[0].name
             
             face_resized = cv2.resize(face_roi, recognizer_input_shape)
             face_rgb = cv2.cvtColor(face_resized, cv2.COLOR_BGR2RGB)
             face_transposed = np.transpose(face_rgb, (2, 0, 1))
             face_input = np.expand_dims(face_transposed, axis=0).astype('float32')
             
-            embedding = self.processor.recognizer.run(None, {recognizer_input_name: face_input})[0]
+            embedding = self.processor.face_recognizer.run(None, {recognizer_input_name: face_input})[0]
             
             self.enroll_gallery.append(embedding)
             self.enroll_current_pose += 1
@@ -460,16 +480,83 @@ class SentinelService:
         return {
             "success": True,
             "config": {
+                'camera_device_id': cfg.getint('Camera', 'device_id', fallback=0),
                 'camera_width': cfg.getint('Camera', 'width', fallback=640),
                 'camera_height': cfg.getint('Camera', 'height', fallback=480),
-                'golden_threshold': cfg.getfloat('Security', 'golden_threshold', fallback=0.25),
-                'standard_threshold': cfg.getfloat('Security', 'standard_threshold', fallback=0.42),
-                'twofa_threshold': cfg.getfloat('Security', 'two_factor_threshold', fallback=0.50),
+                'camera_fps': cfg.getint('Camera', 'fps', fallback=15),
+                'min_face_size': cfg.getint('FaceDetection', 'min_face_size', fallback=100),
+                'spoof_threshold': cfg.getfloat('Liveness', 'spoof_threshold', fallback=0.92),
+                'challenge_timeout': cfg.getfloat('Liveness', 'challenge_timeout', fallback=20.0),
             }
         }
     
     def update_config(self, params):
-        return {"success": True}
+        try:
+            updates = params.get('config', {}) if isinstance(params, dict) else {}
+            if not updates:
+                return {"success": False, "error": "No config updates provided"}
+            
+            import configparser
+            ini_path = self.config.config_path if hasattr(self.config, 'config_path') else 'config.ini'
+            cfg_edit = configparser.ConfigParser()
+            
+            if os.path.exists(ini_path):
+                cfg_edit.read(ini_path)
+            
+            # Camera Section
+            if 'Camera' not in cfg_edit: cfg_edit['Camera'] = {}
+            if 'camera_width' in updates: cfg_edit['Camera']['width'] = str(updates['camera_width'])
+            if 'camera_height' in updates: cfg_edit['Camera']['height'] = str(updates['camera_height'])
+            if 'camera_fps' in updates: cfg_edit['Camera']['fps'] = str(updates['camera_fps'])
+            # Since user manually edited, turn OFF auto_detect to lock in their choice
+            cfg_edit['Camera']['auto_detect'] = 'false'
+            
+            # Liveness / FaceDetection Section
+            if 'Liveness' not in cfg_edit: cfg_edit['Liveness'] = {}
+            if 'challenge_timeout' in updates: cfg_edit['Liveness']['challenge_timeout'] = str(updates['challenge_timeout'])
+            if 'spoof_threshold' in updates: cfg_edit['Liveness']['spoof_threshold'] = str(updates['spoof_threshold'])
+            
+            if 'FaceDetection' not in cfg_edit: cfg_edit['FaceDetection'] = {}
+            if 'min_face_size' in updates: cfg_edit['FaceDetection']['min_face_size'] = str(updates['min_face_size'])
+            
+            # Save to disk
+            with open(ini_path, 'w') as configfile:
+                cfg_edit.write(configfile)
+                
+            os.chmod(ini_path, 0o600)
+                
+            # Reload in memory
+            self.config = BiometricConfig()
+            self.logger.info("Configuration updated successfully.")
+            return {"success": True}
+        except Exception as e:
+            self.logger.error(f"Error updating config: {e}")
+            return {"success": False, "error": str(e)}
+
+    def reset_config(self, params):
+        """Restores config to default and re-enables auto_detect"""
+        try:
+            import configparser
+            ini_path = self.config.config_path if hasattr(self.config, 'config_path') else 'config.ini'
+            
+            # Default empty config
+            cfg_edit = configparser.ConfigParser()
+            
+            # We don't write ALL defaults, only the ones we manage. 
+            # The defaults dict inside BiometricConfig will fill in the blanks.
+            cfg_edit['Camera'] = {'auto_detect': 'true', 'device_id': '0'}
+            
+            with open(ini_path, 'w') as configfile:
+                cfg_edit.write(configfile)
+                
+            os.chmod(ini_path, 0o600)
+            
+            self.config = BiometricConfig()
+            self.logger.info("Configuration reset to defaults.")
+            return {"success": True}
+        except Exception as e:
+            self.logger.error(f"Error resetting config: {e}")
+            return {"success": False, "error": str(e)}
 
     def get_enrolled_users(self, params):
         if not self.store: self.store = FaceEmbeddingStore()
@@ -497,6 +584,9 @@ class SentinelService:
         bm.confirm_intrusion(filename)
         return {"success": True}
 
+    def ping(self, params):
+        return {"success": True, "status": "alive"}
+
 
 # --- RPC DISPATCHER ---
 def _build_methods(service: SentinelService):
@@ -514,9 +604,11 @@ def _build_methods(service: SentinelService):
         "get_enrolled_users": service.get_enrolled_users,
         "get_config": service.get_config,
         "update_config": service.update_config,
+        "reset_config": service.reset_config,
         "get_intrusions": service.get_intrusions,
         "delete_intrusion": service.delete_intrusion,
         "confirm_intrusion": service.confirm_intrusion,
+        "ping": service.ping,
     }
 
 def _rpc_error(request_id, code, message):
@@ -555,10 +647,22 @@ def _handle_rpc_line(service: SentinelService, methods: dict, line: str):
         logger.exception("RPC method failed: %s", e)
         return _rpc_error(request_id, -32603, str(e))
 
+def _dispatch_request(conn: socket.socket, service: SentinelService, methods: dict, line: str, write_lock: threading.Lock):
+    try:
+        resp = _handle_rpc_line(service, methods, line)
+        if resp:
+            out = (json.dumps(resp, ensure_ascii=False) + "\n").encode('utf-8')
+            with write_lock:
+                conn.sendall(out)
+    except Exception as e:
+        logger.exception("Error processing RPC request line: %s", e)
+
 def _handle_client(conn: socket.socket, service: SentinelService, methods: dict):
     try:
         conn.settimeout(300) # 5m timeout
         buffer = ""
+        write_lock = Lock()
+        request_times = []
         while True:
             chunk = conn.recv(4096)
             if not chunk: break
@@ -569,11 +673,16 @@ def _handle_client(conn: socket.socket, service: SentinelService, methods: dict)
                 line = line.strip()
                 if not line: continue
                 
-                # Process
-                resp = _handle_rpc_line(service, methods, line)
-                if resp:
-                    out = (json.dumps(resp, ensure_ascii=False) + "\n").encode('utf-8')
-                    conn.sendall(out)
+                # Rate Limiting
+                now = time.time()
+                request_times = [t for t in request_times if now - t < 1.0]
+                if len(request_times) >= 30:
+                    logger.warning("Rate limit exceeded on socket connection")
+                    continue
+                request_times.append(now)
+                
+                # Process concurrently
+                Thread(target=_dispatch_request, args=(conn, service, methods, line, write_lock), daemon=True).start()
     except socket.timeout:
         pass
     except Exception as e:

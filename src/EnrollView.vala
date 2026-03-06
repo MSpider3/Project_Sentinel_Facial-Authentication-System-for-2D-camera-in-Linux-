@@ -312,6 +312,10 @@ namespace Sentinel {
                 return "No face detected";
             case "multiple_faces":
                 return "Too many faces!";
+            case "FACE_TOO_SMALL":
+                return "Move closer to the camera";
+            case "SPOOF_SUSPECTED":
+                return "Anti-spoof error (Check lighting)";
             default:
                 return status;
             }

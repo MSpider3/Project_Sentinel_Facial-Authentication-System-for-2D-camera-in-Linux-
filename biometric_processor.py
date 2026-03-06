@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 import os
-import mediapipe as mp
 from scipy.spatial import distance as dist
 import time
 import logging
@@ -278,6 +277,38 @@ class BiometricProcessor:
         
         self.recognizer_input_name = None
         self.recognizer_input_shape = None
+        
+    def detect_camera_capabilities(self, device_id=0):
+        """
+        Probes the camera via OpenCV to find its max capabilities and 
+        returns the optimal configuration presets.
+        """
+        self.logger.info(f"Probing camera '{device_id}' capabilities...")
+        cap = cv2.VideoCapture(device_id)
+        if not cap.isOpened():
+            self.logger.warning("Could not open camera to probe capabilities. Falling back to defaults.")
+            return {"width": 640, "height": 480, "fps": 15, "min_face_size": 100}
+            
+        # Attempt to request an absurdly high resolution to force camera to its max
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 10000)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 10000)
+        
+        max_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        max_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+        
+        self.logger.info(f"Detected max camera resolution: {max_width}x{max_height}")
+        
+        # Determine presets based on max capabilities
+        # We downscale intentionally to save CPU, as face detection runs at 640x640 anyway
+        if max_width >= 3840: # 4K
+            return {"width": 1280, "height": 720, "fps": 15, "min_face_size": 150}
+        elif max_width >= 1920: # 1080p
+            return {"width": 960, "height": 540, "fps": 15, "min_face_size": 120}
+        elif max_width >= 1280: # 720p
+            return {"width": 640, "height": 480, "fps": 15, "min_face_size": 100}
+        else: # 480p or below
+            return {"width": 640, "height": 480, "fps": 10, "min_face_size": 80}
 
     def initialize_models(self):
         try:
@@ -300,19 +331,27 @@ class BiometricProcessor:
             self.recognizer_input_name = self.face_recognizer.get_inputs()[0].name
             self.recognizer_input_shape = self.face_recognizer.get_inputs()[0].shape[2:]
             
-            self.mp_face_mesh = mp.solutions.face_mesh.FaceMesh(
-                max_num_faces=1,
-                refine_landmarks=True,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
-            )
-            
             # Use configured SPOOF_THRESHOLD
             self.spoof_detector = SpoofDetector(thr=self.config.SPOOF_THRESHOLD)
             
             self.kalman_tracker = KalmanStabilityTracker()
             self.blink_detector = BlinkDetector(self.config)
             
+            # Warmup dummy inference
+            self.logger.info("Running dummy warmup inferences...")
+            try:
+                dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
+                self.face_detector.detect(dummy_img)
+                
+                if self.recognizer_input_shape and len(self.recognizer_input_shape) >= 2:
+                    h, w = self.recognizer_input_shape
+                    dummy_face = np.zeros((1, 3, h, w), dtype=np.float32)
+                    self.face_recognizer.run(None, {self.recognizer_input_name: dummy_face})
+                
+                self.spoof_detector.predict(dummy_img)
+            except Exception as e:
+                self.logger.warning(f"Warmup failed (non-fatal): {e}")
+                
             self.logger.info("All models loaded successfully.")
             return True
         except Exception as e:
@@ -360,6 +399,14 @@ class BiometricProcessor:
         return (None, 0.0, {})
     
     def detect_blink(self, frame):
+        import mediapipe as mp
+        if not hasattr(self, 'mp_face_mesh') or self.mp_face_mesh is None:
+            self.mp_face_mesh = mp.solutions.face_mesh.FaceMesh(
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.mp_face_mesh.process(rgb_frame)
         if not results.multi_face_landmarks:
@@ -375,13 +422,33 @@ class BiometricProcessor:
         best_match_user = None
         best_match_distance = float('inf')
         all_distances = {}
+        
+        emb_flat = embedding.flatten()
+        emb_norm = np.linalg.norm(emb_flat)
+        if emb_norm == 0.0:
+            return (None, float('inf'), {})
+            
         for user_name, gallery in user_galleries.items():
-            distances = [dist.cosine(embedding, enrolled.flatten()) for enrolled in gallery]
-            min_dist = min(distances) if distances else float('inf')
-            all_distances[user_name] = float(min_dist)
+            if not gallery:
+                continue
+                
+            gal_mat = np.vstack([g.flatten() for g in gallery])
+            gal_norms = np.linalg.norm(gal_mat, axis=1)
+            
+            valid = gal_norms != 0
+            if not np.any(valid):
+                continue
+                
+            sims = np.dot(gal_mat[valid], emb_flat) / (gal_norms[valid] * emb_norm)
+            dists = 1.0 - sims
+            
+            min_dist = float(np.min(dists))
+            all_distances[user_name] = min_dist
+            
             if min_dist < best_match_distance:
                 best_match_distance = min_dist
                 best_match_user = user_name
+                
         return (best_match_user, float(best_match_distance), all_distances)
     
     def adapt_gallery(self, username, gallery, embedding):

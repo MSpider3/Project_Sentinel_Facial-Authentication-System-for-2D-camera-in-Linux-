@@ -8,10 +8,11 @@ __pycache__/
 *$py.class
 *.so
 
-# Virtual environments
+# Virtual environments and packaging
 venv/
 .venv/
 env/
+*.egg-info/
 
 # ---------- IDE / Editor ----------
 .vscode/

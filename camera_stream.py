@@ -34,10 +34,15 @@ class CameraStream:
                     logger.error("Failed to open any camera.")
                     return self
 
-            # optimization settings
-            self.stream.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-            self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-            self.stream.set(cv2.CAP_PROP_FPS, self.fps)
+            # Try setting OpenCV settings to minimize latency
+            try:
+                self.stream.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                self.stream.set(cv2.CAP_PROP_FPS, self.fps)
+                # Minimize buffer size to drop old frames (not supported by all backends)
+                self.stream.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception as e:
+                logger.warning(f"Could not set camera properties: {e}")
             
             # Read first frame to ensure it works
             (self.grabbed, self.frame) = self.stream.read()
@@ -59,6 +64,8 @@ class CameraStream:
 
     def update(self):
         """Background thread loop to keep reading frames."""
+        sleep_time = 0.005 # Small fallback sleep
+        
         while True:
             if self.stopped:
                 if self.stream:
@@ -71,6 +78,9 @@ class CameraStream:
                     self.grabbed = grabbed
                     if grabbed:
                         self.frame = frame
+                        
+                # Fallback sleep to prevent burning CPU if camera read() doesn't block properly
+                time.sleep(sleep_time)
             except Exception as e:
                 logger.error(f"Error in camera read thread: {e}")
                 time.sleep(0.1)

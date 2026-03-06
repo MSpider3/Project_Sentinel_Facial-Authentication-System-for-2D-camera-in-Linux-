@@ -402,6 +402,12 @@ ninja -C builddir
 > ```bash
 > sudo ./venv/bin/python3 sentinel_service.py
 > ```
+> For local testing without root permissions, you can use a temporary socket:
+> ```bash
+> export SENTINEL_SOCKET_PATH=/tmp/sentinel.sock
+> ./venv/bin/python3 sentinel_service.py &
+> ./builddir/sentinel-ui
+> ```
 
 ---
 
