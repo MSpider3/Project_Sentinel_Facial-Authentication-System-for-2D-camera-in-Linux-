@@ -279,8 +279,8 @@ We provide a unified setup script to handle dependencies, **model downloading**,
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/MSpider3/Face_Regcognition_Project.git
-cd Face_Regcognition_Project
+git clone https://github.com/MSpider3/Project-Sentinel.git
+cd Project-Sentinel
 
 # 2. Run the Setup Wizard (must be root)
 chmod +x setup.sh
