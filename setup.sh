@@ -156,7 +156,7 @@ info "Performing Full System Install..."
     fi
     
     # Install dependencies gracefully using pyproject.toml
-    run_cmd "Installing Python backend packages (this may take a minute)..." "$PROJECT_LIB/venv/bin/pip" install "$PROJECT_LIB"
+    run_cmd "Installing Python backend packages (this may take some time depending on your internet speed)..." "$PROJECT_LIB/venv/bin/pip" install "$PROJECT_LIB"
     
     # Config
     if [ ! -f "$PROJECT_ETC/config.ini" ]; then
