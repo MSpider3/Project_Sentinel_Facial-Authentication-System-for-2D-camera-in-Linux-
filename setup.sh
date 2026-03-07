@@ -105,10 +105,10 @@ fi
 if command -v dnf &> /dev/null; then
     run_cmd "Installing system dependencies..." dnf install -y git gcc meson ninja-build vala gtk4-devel \
                    json-glib-devel gstreamer1-devel gstreamer1-plugins-base-devel \
-                   python3-devel pam-devel polkit wget
+                   python3-devel pam-devel polkit wget libadwaita-devel
 else
     warn "'dnf' not found. Please ensure you have the required dependencies manually:"
-    warn "vala, gtk4-devel, json-glib-devel, gstreamer1-devel, python3-devel, pam-devel"
+    warn "vala, gtk4-devel, libadwaita-devel, json-glib-devel, gstreamer1-devel, python3-devel, pam-devel"
 fi
 success "System dependencies checked."
 echo ""
