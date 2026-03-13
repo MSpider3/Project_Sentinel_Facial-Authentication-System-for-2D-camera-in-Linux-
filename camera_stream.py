@@ -3,7 +3,12 @@ import threading
 import time
 import logging
 
-logger = logging.getLogger(__name__)
+# Use sentinel_logger if available (production), fall back silently for tests
+try:
+    import sentinel_logger as _slog
+    logger = _slog.get("camera_stream")
+except ImportError:
+    logger = logging.getLogger(__name__)
 
 class CameraStream:
     """

@@ -5,41 +5,66 @@ Provides IPC interface between Vala GTK4 UI and Python biometric processor.
 Runs as a persistent service to keep models warm.
 """
 
+# ── STEP 0: Wire up file logging BEFORE any other import so crashes are captured ──
+# This is the very first thing the process does so we never lose error messages.
+import os, sys
+
+# Bootstrap: add the project source directory to sys.path so sentinel_logger
+# can be found whether we are running from source OR from a pip-installed venv.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _THIS_DIR not in sys.path:
+    sys.path.insert(0, _THIS_DIR)
+
+# Also check the working directory (systemd WorkingDirectory=/usr/lib/project-sentinel)
+_WORK_DIR = os.getcwd()
+if _WORK_DIR not in sys.path:
+    sys.path.insert(0, _WORK_DIR)
+
+try:
+    import sentinel_logger as _slog
+    _log = _slog.setup("Sentinel")
+    _log.info("sentinel_logger loaded OK — logging is active")
+except Exception as _boot_err:
+    # Absolute last resort: stderr only (still captured by journalctl)
+    import logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+        handlers=[logging.StreamHandler(sys.stderr)],
+    )
+    _log = logging.getLogger("Sentinel")
+    _log.error(f"Could not load sentinel_logger: {_boot_err}")
+
+# Global exception hook — any unhandled exception gets logged to our log file
+def _excepthook(exc_type, exc_value, exc_tb):
+    _log.critical("UNHANDLED EXCEPTION — daemon is about to crash",
+                  exc_info=(exc_type, exc_value, exc_tb))
+sys.excepthook = _excepthook
+
+_log.info("Starting imports...")
+
+# ── STEP 1: Standard library imports ──────────────────────────────────────────
 import socket
-import os
-import sys
 import json
 import logging
 import threading
 import time
 import base64
 import pwd
-import pam
+
+_log.info("stdlib imports OK")
+
+# ── STEP 2: Third-party imports (these can fail if pip install missed packages) ─
+try:
+    import pam
+    _log.info("pam imported OK")
+except ImportError as e:
+    _log.critical(f"FATAL: 'pam' module not found — {e}. Install python-pam in the venv.")
+    sys.exit(1)
+
 from threading import Thread, Lock, Event
 
-class JsonFormatter(logging.Formatter):
-    def format(self, record):
-        log_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "module": record.module,
-        }
-        if record.exc_info:
-            log_record["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(log_record)
-
-logging.basicConfig(level=logging.INFO)
-root_logger = logging.getLogger()
-for h in root_logger.handlers:
-    h.setFormatter(JsonFormatter())
-logger = logging.getLogger(__name__)
-
-# Ensure consistent working directory (limitations of systemd)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-os.chdir(BASE_DIR)
-
-# 1. Set Environment Variables to quiet C++ libraries
+# ── STEP 3: Quiet C++ library noise ───────────────────────────────────────────
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['GLOG_minloglevel'] = '3'
 os.environ['LIBGL_DEBUG'] = 'quiet'
@@ -48,10 +73,14 @@ os.environ['MESA_DEBUG'] = 'silent'
 import warnings
 warnings.filterwarnings('ignore')
 
-# --- SILENCER CONTEXT MANAGER ---
+# ── STEP 4: Get module-level logger ───────────────────────────────────────────
+logger = logging.getLogger("Sentinel.service")
+
+# ── STEP 5: Silence C-level stdout during heavy imports ───────────────────────
+
 class LowLevelSilence:
     """
-    Redirects file descriptor 1 (stdout) to /dev/null to silence 
+    Redirects file descriptor 1 (stdout) to /dev/null to silence
     C libraries (TensorFlow, EGL, OpenCV) that bypass Python's sys.stdout.
     """
     def __enter__(self):
@@ -67,7 +96,7 @@ class LowLevelSilence:
         os.close(self.devnull)
         os.close(self.save_fd)
 
-# Initialize globals for lazy loading
+# ── STEP 6: Global lazy-load placeholders ─────────────────────────────────────
 cv2 = None
 np = None
 BiometricProcessor = None
@@ -77,30 +106,15 @@ FaceEmbeddingStore = None
 SentinelAuthenticator = None
 CameraStream = None
 
-# Setup logging
-script_dir = os.path.dirname(os.path.abspath(__file__))
-log_dir = os.path.join(script_dir, 'logs')
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, 'sentinel_service.log')
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        # Also log to stdout for systemd journalling (which captures stdout)
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger("SentinelDaemon")
+_log.info("Top-level module setup complete")
 
 # ---- DAEMON SOCKET CONFIG ----
 DEFAULT_SOCKET_PATH = os.environ.get("SENTINEL_SOCKET_PATH", "/run/sentinel/sentinel.sock")
 SOCKET_BACKLOG = 10
-# 0o660 allows Owner/Group read/write.
-# We expect the daemon to run as 'root' or 'sentinel' user.
-# The UI user must be in the 'sentinel' group to connect.
-SOCKET_MODE = 0o660  
+# 0o666: world-readable so the desktop user (running the Vala UI) can connect
+# to the daemon which runs as root. The socket is on a tmpfs inside /run/sentinel
+# so this does not expose persistent data — only the IPC channel itself.
+SOCKET_MODE = 0o666
 
 class SentinelService:
     """JSON-RPC service wrapper for biometric processor"""
@@ -729,10 +743,11 @@ def main():
         try:
             logger.info("Warmup thread starting...")
             # We use a long timeout for internal init
-            service.initialize({"timeout_sec": 300}) 
+            service.initialize({"timeout_sec": 300})
             logger.info("Warmup finished.")
         except Exception as e:
-            logger.error(f"Warmup thread failed: {e}")
+            logger.warning(f"Warmup failed (non-fatal): {e}")
+
             
     Thread(target=_warmup, daemon=True).start()
     

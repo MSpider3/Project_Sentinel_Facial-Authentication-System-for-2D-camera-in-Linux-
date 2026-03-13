@@ -24,3 +24,14 @@ dependencies = [
 
 [project.scripts]
 sentinel-daemon = "sentinel_service:main"
+
+[tool.setuptools]
+py-modules = [
+    "biometric_processor",
+    "camera_stream",
+    "sentinel_client",
+    "sentinel_logger",
+    "sentinel_service",
+    "spoof_detector",
+    "stability_tracker"
+]

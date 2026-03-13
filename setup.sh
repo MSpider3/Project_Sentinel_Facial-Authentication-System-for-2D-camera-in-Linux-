@@ -150,6 +150,12 @@ info "Performing Full System Install..."
     cp requirements.txt "$PROJECT_LIB/"
     cp pyproject.toml "$PROJECT_LIB/"
     
+    # Copy AI Models (daemon reads these from its CWD = /usr/lib/project-sentinel)
+    info "Copying AI models..."
+    mkdir -p "$PROJECT_LIB/models"
+    cp -r models/. "$PROJECT_LIB/models/"
+    success "AI models copied."
+    
     # Python Venv
     if [ ! -d "$PROJECT_LIB/venv" ]; then
         run_cmd "Creating Python Virtual Environment..." python3 -m venv "$PROJECT_LIB/venv"
@@ -180,7 +186,32 @@ info "Performing Full System Install..."
     cp sentinel_client.py /usr/bin/sentinel_client.py
     chmod +x /usr/bin/sentinel_client.py
     
+    # Fix camera access: ensure the video group exists and allow V4L2 from systemd
+    info "Configuring camera device access..."
+    if command -v setsebool &>/dev/null; then
+        # Allow systemd services to read/write v4l2 devices on SELinux (Fedora)
+        setsebool -P httpd_use_openstack 0 &>/dev/null || true
+        # The key rule: allow unconfined to mmap
+        semanage boolean -m --on allow_domain_fd_use &>/dev/null || true
+    fi
+    # Set video device permissions so the video group can access them
+    for dev in /dev/video*; do
+        [ -e "$dev" ] && chmod 660 "$dev" && chown root:video "$dev" || true
+    done
+    # Add executing user to video group so they can also access camera
+    REAL_USER=${SUDO_USER:-$(logname 2>/dev/null || echo "")}
+    if [ -n "$REAL_USER" ]; then
+        usermod -aG video "$REAL_USER" 2>/dev/null && \
+            success "Added $REAL_USER to 'video' group (re-login required)" || true
+    fi
+    
+    # Secure the log directory (root-only, requires sudo to read)
+    mkdir -p /var/log/sentinel
+    chmod 750 /var/log/sentinel
+    chown root:root /var/log/sentinel
+    
     success "Full Installation Complete."
+
 echo ""
 echo -e "${YELLOW}==========================================${NC}"
 echo -e "${YELLOW}   PAM Configuration (Manual Step)${NC}"

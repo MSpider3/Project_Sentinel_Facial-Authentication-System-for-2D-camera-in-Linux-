@@ -7,7 +7,12 @@ import numpy as np
 import onnxruntime as ort
 import logging
 
-logger = logging.getLogger(__name__)
+# Use sentinel_logger if available (production), fall back silently for tests
+try:
+    import sentinel_logger as _slog
+    logger = _slog.get("spoof_detector")
+except ImportError:
+    logger = logging.getLogger(__name__)
 
 CFG_PATH = "models/minifas_calib.json"
 
