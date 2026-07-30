@@ -1,5 +1,15 @@
 # 🛡️ Project Sentinel: Advanced Biometric Authentication for Linux
 
+> **Note**
+>
+> I have stopped actively maintaining and updating this repository due to its poor architecture and several serious security vulnerabilities.
+>
+> This project was originally created in a hurry as my final-year project. At the time, my primary goal was simply to make it work rather than focus on clean architecture, maintainability, or security.
+>
+> Since then, I have rebuilt the project from scratch, taking the time to design and implement it properly. You can find the improved and actively maintained version here:
+>
+> 👉 **[Sentinel-Recreated](https://github.com/MSpider3/Sentinel-Recreated)**
+
 <div align="center">
 
 **A secure, daemon-based face recognition system designed to bring "Windows Hello"-like biometric unlock to Linux desktops.**
